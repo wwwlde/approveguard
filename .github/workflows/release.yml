@@ -14,7 +14,6 @@ jobs:
       matrix:
         goos: [linux, darwin, windows]
         goarch: [amd64, arm64]
-        # Example: exclude certain combinations if unsupported
         exclude:
           - goos: darwin
             goarch: arm64
@@ -43,7 +42,7 @@ jobs:
         run: ls -lh
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ApproveGuard-${{ matrix.goos }}-${{ matrix.goarch }}
           path: "./ApproveGuard-${{ matrix.goos }}-${{ matrix.goarch }}"
@@ -56,7 +55,7 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
 
       - name: List all downloaded artifacts
         run: ls -la
@@ -69,15 +68,3 @@ jobs:
             ./ApproveGuard-*/*
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_GITHUB_TOKEN }}
-
-      # Example Docker build step (commented out):
-      # - name: Build and push Docker image
-      #   uses: docker/build-push-action@v4
-      #   with:
-      #     context: .
-      #     file: ./Dockerfile
-      #     # platforms might match your build matrix or a custom list
-      #     platforms: linux/amd64,linux/arm64
-      #     push: true
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.RELEASE_GITHUB_TOKEN }}
