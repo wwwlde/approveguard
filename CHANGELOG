@@ -1,13 +1,5 @@
 # Changelog
 
-## [v0.2.1] - 2026-07-10
-
-### Fixed
-- Release workflow: grant `contents: write` permission and fall back to the
-  default `github.token` when the `RELEASE_GITHUB_TOKEN` secret is not set —
-  the v0.2.0 run built all binaries but failed to create the GitHub Release
-  ("Resource not accessible by integration").
-
 ## [v0.2.0] - 2026-07-10
 
 ### Added
@@ -37,6 +29,10 @@
 ### Fixed
 - README: stale `BlockMaster` name in the sample `--help` output; documented
   Go 1.24 and running tests.
+- Release workflow: grant `contents: write` permission and fall back to the
+  default `github.token` when the `RELEASE_GITHUB_TOKEN` secret is not set —
+  without it the release job failed to create the GitHub Release
+  ("Resource not accessible by integration").
 
 ## [v0.1.0] - 2025-01-28
 
