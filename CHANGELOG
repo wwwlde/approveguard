@@ -1,5 +1,35 @@
 # Changelog
 
+## [v0.2.0] - 2026-07-10
+
+### Added
+- Token scope validation (was announced in v0.1.0 but never implemented): before
+  querying the MR the tool calls `GET /personal_access_tokens/self` and fails
+  fast if the token lacks the `read_api` (or `api`) scope, or is invalid /
+  revoked / expired. Token types that don't support the endpoint only produce
+  a warning and processing continues.
+
+### Changed
+- Renamed the Go module from `linuxhelp.com.ua` to `github.com/wwwlde/ApproveGuard`.
+- Migrated from the deprecated `github.com/xanzy/go-gitlab` to the official
+  `gitlab.com/gitlab-org/api/client-go` (project/MR IDs are now `int64`).
+- Aligned the Go version everywhere (go.mod / Dockerfile / CI / README): Go 1.24.
+- Renamed `getProjectIDFromURL` to `getProjectPathFromURL` (it returns the project
+  path, not an ID) and hardened it against URLs with an empty project path.
+- `extractProtocolAndDomain` now rejects URLs without a scheme or host instead of
+  returning a malformed base URL like `://`.
+- Errors are wrapped with `%w` for proper error chains.
+- Dockerfile: builder image `golang:1.24`, `alpine:3.21`, cached `go mod download`
+  layer, build version via `ARG VERSION` instead of a hardcoded `0.0.1`,
+  SPDX license label `GPL-3.0-only`.
+- Release workflow: `actions/checkout@v4`, `actions/setup-go@v5`
+  (`go-version-file: go.mod`), `softprops/action-gh-release@v2`; added a
+  vet + test job before building; added a `darwin/arm64` (Apple Silicon) build.
+
+### Fixed
+- README: stale `BlockMaster` name in the sample `--help` output; documented
+  Go 1.24 and running tests.
+
 ## [v0.1.0] - 2025-01-28
 
 ### Added
