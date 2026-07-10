@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [v0.2.0] - 2026-07-10
 
 ### Added
 - Token scope validation (was announced in v0.1.0 but never implemented): before
