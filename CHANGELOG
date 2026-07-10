@@ -1,5 +1,45 @@
 # Changelog
 
+## [v1.0.0] - 2026-07-10
+
+ApproveGuard is now a merge gate for GitLab Free that can physically block the
+Merge button, not just an Atlantis exit-code check.
+
+### Added
+- **`serve` subcommand** — a webhook server implementing the commit-status
+  gate: it receives GitLab merge request webhooks (`open` / `reopen` /
+  `update` / `approval` / `unapproval` / `approved` / `unapproved`), counts
+  the MR approvals and posts an `approve-guard` commit status
+  (`success`/`failed`, description `N/M approvals`) on the head commit.
+  Together with the Free-tier "Pipelines must succeed" merge check this
+  blocks/unblocks the Merge button in real time.
+  - `POST /webhook` (with `X-Gitlab-Token` constant-time verification,
+    1 MiB body limit) and `GET /healthz`; graceful shutdown on SIGINT/SIGTERM.
+  - Per-project threshold override via webhook URL query: `/webhook?approvals=N`.
+  - Approvals are **reset when new commits are pushed** (default on; needs a
+    project/group access token; `--reset-approvals-on-push=false` to disable).
+  - Config via flags/env: `LISTEN_ADDR`, `GITLAB_WEBHOOK_SECRET`, `GITLAB_URL`
+    (optional — otherwise derived from the webhook payload), `APPROVALS`,
+    `COUNT_AUTHOR_APPROVAL`, `RESET_APPROVALS_ON_PUSH`, `GITLAB_TOKEN`.
+- **Approvals as the primary metric**: both modes count real MR approvals
+  (`GET .../approvals`, Free tier) and log approver usernames. The MR author's
+  self-approval is excluded by default (`--count-author-approval` to include).
+- Scope validation is mode-aware: `check` accepts `read_api` or `api`,
+  `serve` requires `api`.
+
+### Changed
+- **Breaking:** the CLI moved to subcommands. The old root invocation is now
+  `ApproveGuard check`; it counts approvals by default. The legacy upvotes
+  (👍) behaviour is kept behind `check --mode upvotes`, and `--upvotes` /
+  `UPVOTES` still work as a threshold alias (`--approvals` / `APPROVALS` win).
+- Code split from a single `main.go` into `main.go` / `check.go` / `gate.go`
+  / `webhook.go` / `server.go`; the approval-counting decision logic lives in
+  `evaluateApprovals` and is unit-tested.
+- Dockerfile: `EXPOSE 8080` for the server mode.
+- README rewritten: server mode, GitLab project setup (bot token, "Pipelines
+  must succeed", webhook), updated Atlantis compose/repos.yaml examples,
+  v0.x upgrade notes.
+
 ## [v0.2.0] - 2026-07-10
 
 ### Added
