@@ -1,6 +1,6 @@
-# Contributing to NoiseNullifier
+# Contributing to ApproveGuard
 
-Welcome to the NoiseNullifier contribution guide! We're delighted you're interested in lending a hand to improve this tool.
+Welcome to the ApproveGuard contribution guide! We're delighted you're interested in lending a hand to improve this tool.
 
 ## Code of Conduct
 
@@ -10,13 +10,13 @@ We have a code of conduct; please follow it in all your interactions with the pr
 
 ### Reporting Bugs
 
-1. **Ensure the bug was not already reported** by searching on GitHub under [Issues](https://github.com/wwwlde/NoiseNullifier/issues).
+1. **Ensure the bug was not already reported** by searching on GitHub under [Issues](https://github.com/wwwlde/ApproveGuard/issues).
 
-2. If you're unable to find an open issue addressing the problem, [open a new one](https://github.com/wwwlde/NoiseNullifier/issues/new). Be sure to include a **title and clear description**, as much relevant information as possible, and a **code sample** or an **executable test case** demonstrating the expected behavior that is not occurring.
+2. If you're unable to find an open issue addressing the problem, [open a new one](https://github.com/wwwlde/ApproveGuard/issues/new). Be sure to include a **title and clear description**, as much relevant information as possible, and a **code sample** or an **executable test case** demonstrating the expected behavior that is not occurring.
 
 ### Suggesting Enhancements
 
-1. Open a new issue detailing your suggestion under [Issues](https://github.com/wwwlde/NoiseNullifier/issues).
+1. Open a new issue detailing your suggestion under [Issues](https://github.com/wwwlde/ApproveGuard/issues).
 
 2. Use a clear and descriptive title.
 
