@@ -4,7 +4,7 @@ import (
 	"testing"
 )
 
-func TestGetProjectIDFromURL(t *testing.T) {
+func TestGetProjectPathFromURL(t *testing.T) {
 	tests := []struct {
 		name     string
 		url      string
@@ -29,17 +29,23 @@ func TestGetProjectIDFromURL(t *testing.T) {
 			expected: "",
 			wantErr:  true,
 		},
+		{
+			name:     "Missing project path",
+			url:      "https://gitlab.com/-/merge_requests/1",
+			expected: "",
+			wantErr:  true,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := getProjectIDFromURL(tt.url)
+			result, err := getProjectPathFromURL(tt.url)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("getProjectIDFromURL() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("getProjectPathFromURL() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if result != tt.expected {
-				t.Errorf("getProjectIDFromURL() = %v, want %v", result, tt.expected)
+				t.Errorf("getProjectPathFromURL() = %v, want %v", result, tt.expected)
 			}
 		})
 	}
@@ -61,6 +67,18 @@ func TestExtractProtocolAndDomain(t *testing.T) {
 		{
 			name:     "Invalid URL",
 			url:      "://gitlab.com",
+			expected: "",
+			wantErr:  true,
+		},
+		{
+			name:     "Missing scheme",
+			url:      "gitlab.com/foo/bar/-/merge_requests/123",
+			expected: "",
+			wantErr:  true,
+		},
+		{
+			name:     "Missing host",
+			url:      "https://",
 			expected: "",
 			wantErr:  true,
 		},

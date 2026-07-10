@@ -26,8 +26,8 @@ GitLab Community Edition is an open-source platform that provides a wide array o
 
 ## Requirements
 
-- Go 1.21
-- Atlantis 0.19.X
+- Go 1.24+
+- Atlantis
 - GitLab API Token with `read_api` access level
 
 ## 🚀 Installation
@@ -36,6 +36,12 @@ To build the project, run:
 
 ```
 CGO_ENABLED=0 go build -o ./ApproveGuard --ldflags '-w -s -extldflags "-static"' .
+```
+
+To run the tests:
+
+```
+go test ./...
 ```
 
 ## ⚙ Options
@@ -58,12 +64,12 @@ Usage:
   ApproveGuard [flags]
 
 Flags:
-  -h, --help           help for BlockMaster
-      --pull-num int   Merge request ID (or set PULL_NUM env var) (default 1)
-      --token string   GitLab token (or set GITLAB_TOKEN env var) (default "glpat-XXX")
+  -h, --help           help for ApproveGuard
+      --pull-num int   Merge request ID (or set PULL_NUM env var)
+      --token string   GitLab token (or set GITLAB_TOKEN env var)
       --upvotes int    Upvote threshold (or set UPVOTES env var) (default 1)
-      --url string     Merge request URL (or set PULL_URL env var) (default "https://gitlab.example.com/denys.lemeshko/downstream/-/merge_requests/1")
-  -v, --version        version for BlockMaster
+      --url string     Merge request URL (or set PULL_URL env var)
+  -v, --version        version for ApproveGuard
 ```
 
 👍
