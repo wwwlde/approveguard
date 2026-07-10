@@ -22,6 +22,7 @@ GitLab Community Edition is an open-source platform that provides a wide array o
 
 - Check the upvote count for a specific Merge Request
 - Customize the upvote threshold to suit your project needs
+- Validates that the token has the required `read_api` (or `api`) scope and fails fast otherwise
 - Written in Go for cross-platform compatibility
 
 ## Requirements

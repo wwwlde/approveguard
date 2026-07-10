@@ -78,6 +78,10 @@ func checkUpvotes() {
 		log.Fatalf("Failed to create GitLab client: %s", err)
 	}
 
+	if err := validateTokenScopes(ctx, client); err != nil {
+		log.Fatalf("Token validation failed: %s", err)
+	}
+
 	projectPath, err := getProjectPathFromURL(pullURL)
 	if err != nil {
 		log.Fatalf("Failed to extract project path from URL: %s", err)
@@ -145,6 +149,35 @@ func extractProtocolAndDomain(rawURL string) (string, error) {
 		return "", fmt.Errorf("invalid URL %q: scheme and host are required", rawURL)
 	}
 	return fmt.Sprintf("%s://%s", parsedURL.Scheme, parsedURL.Host), nil
+}
+
+// validateTokenScopes checks that the supplied token carries the `read_api`
+// (or the broader `api`) scope required to query merge requests. Token types
+// that do not expose GET /personal_access_tokens/self (e.g. OAuth tokens, or
+// GitLab versions without the endpoint) only produce a warning — the real API
+// calls that follow will surface any genuine permission problem.
+func validateTokenScopes(ctx context.Context, client *gitlab.Client) error {
+	token, resp, err := client.PersonalAccessTokens.GetSinglePersonalAccessToken(gitlab.WithContext(ctx))
+	if err != nil {
+		if resp != nil && resp.StatusCode == http.StatusUnauthorized {
+			return fmt.Errorf("token is invalid, revoked or expired: %w", err)
+		}
+		log.Printf("Warning: could not verify token scopes: %s. Continuing anyway.", err)
+		return nil
+	}
+	if !hasRequiredScope(token.Scopes) {
+		return fmt.Errorf("token lacks the required 'read_api' (or 'api') scope, got scopes: %v", token.Scopes)
+	}
+	return nil
+}
+
+func hasRequiredScope(scopes []string) bool {
+	for _, scope := range scopes {
+		if scope == "api" || scope == "read_api" {
+			return true
+		}
+	}
+	return false
 }
 
 func getNumericProjectID(ctx context.Context, client *gitlab.Client, projectPath string) (int64, error) {
