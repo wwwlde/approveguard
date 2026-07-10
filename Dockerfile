@@ -21,4 +21,5 @@ LABEL org.opencontainers.image.licenses=GPL-3.0-only
 WORKDIR /app
 COPY --from=builder /build/ApproveGuard .
 COPY --from=alpine /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+EXPOSE 8080
 ENTRYPOINT ["/app/ApproveGuard"]

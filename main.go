@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -17,27 +16,18 @@ import (
 )
 
 var (
-	gitlabToken      string
-	upvotesThreshold int64
-	mergeRequestID   int64
-	pullURL          string
-	version          = "dev" // Default version if not set during build
-	rootCmd          = &cobra.Command{
-		Use:     "approve-guard",
-		Short:   "Check upvotes for a GitLab MR",
+	version = "dev" // Default version if not set during build
+	rootCmd = &cobra.Command{
+		Use:   "approve-guard",
+		Short: "GitLab MR approval gate for GitLab Free",
+		Long: "ApproveGuard gates merges on GitLab Free by counting MR approvals.\n" +
+			"Run 'check' as a one-shot gate (e.g. in an Atlantis workflow) or 'serve'\n" +
+			"as a webhook server that blocks the Merge button via commit statuses.",
 		Version: version,
-		Run: func(cmd *cobra.Command, args []string) {
-			checkUpvotes()
-		},
 	}
 )
 
 func init() {
-	rootCmd.PersistentFlags().StringVar(&gitlabToken, "token", getEnv("GITLAB_TOKEN", ""), "GitLab token (or set GITLAB_TOKEN env var)")
-	rootCmd.PersistentFlags().Int64Var(&upvotesThreshold, "upvotes", getInt64FromEnv("UPVOTES", 1), "Upvote threshold (or set UPVOTES env var)")
-	rootCmd.PersistentFlags().StringVar(&pullURL, "url", getEnv("PULL_URL", ""), "Merge request URL (or set PULL_URL env var)")
-	rootCmd.PersistentFlags().Int64Var(&mergeRequestID, "pull-num", getInt64FromEnv("PULL_NUM", 0), "Merge request ID (or set PULL_NUM env var)")
-
 	rootCmd.Use = filepath.Base(os.Args[0])
 }
 
@@ -47,97 +37,43 @@ func main() {
 	}
 }
 
-func checkUpvotes() {
-	if upvotesThreshold < 1 {
-		log.Fatalf("Invalid upvotes threshold: must be ≥1 (got %d)", upvotesThreshold)
-	}
-	if mergeRequestID <= 0 {
-		log.Fatalf("Invalid merge request ID: must be positive (got %d)", mergeRequestID)
-	}
-	if gitlabToken == "" {
-		log.Fatalf("GitLab token is required. Use --token or set GITLAB_TOKEN environment variable.")
-	}
-	if pullURL == "" {
-		log.Fatalf("Merge request URL is required. Use --url or set PULL_URL environment variable.")
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-
-	gitlabBaseURL, err := extractProtocolAndDomain(pullURL)
-	if err != nil {
-		log.Fatalf("Error extracting base URL: %s", err)
-	}
-
-	client, err := gitlab.NewClient(
-		gitlabToken,
-		gitlab.WithBaseURL(gitlabBaseURL),
+func newGitlabClient(token, baseURL string) (*gitlab.Client, error) {
+	return gitlab.NewClient(
+		token,
+		gitlab.WithBaseURL(baseURL),
 		gitlab.WithHTTPClient(&http.Client{Timeout: 10 * time.Second}),
 	)
-	if err != nil {
-		log.Fatalf("Failed to create GitLab client: %s", err)
-	}
-
-	if err := validateTokenScopes(ctx, client); err != nil {
-		log.Fatalf("Token validation failed: %s", err)
-	}
-
-	projectPath, err := getProjectPathFromURL(pullURL)
-	if err != nil {
-		log.Fatalf("Failed to extract project path from URL: %s", err)
-	}
-
-	projectID, err := getNumericProjectID(ctx, client, projectPath)
-	if err != nil {
-		log.Fatalf("Failed to get numeric project ID: %s", err)
-	}
-
-	log.Printf("Numeric Project ID: %d", projectID)
-
-	mr, _, err := client.MergeRequests.GetMergeRequest(projectID, mergeRequestID, nil, gitlab.WithContext(ctx))
-	if err != nil {
-		log.Fatalf("Failed to get MR: %s", err)
-	}
-
-	log.Printf("Merge request Author: %s (%s)", mr.Author.Name, mr.Author.Username)
-
-	if mr.Upvotes >= upvotesThreshold {
-		log.Println("Merge request has sufficient upvotes.")
-		os.Exit(0)
-	} else {
-		log.Println("Merge request has insufficient upvotes.")
-		os.Exit(1)
-	}
 }
 
-// getProjectPathFromURL extracts the full project path (namespace/project,
-// including subgroups) from a merge request URL such as
-// https://gitlab.example.com/group/subgroup/project/-/merge_requests/1.
-func getProjectPathFromURL(mergeRequestURL string) (string, error) {
-	u, err := url.Parse(mergeRequestURL)
+// validateTokenScopes checks that the supplied token carries one of the
+// accepted scopes. Token types that do not expose
+// GET /personal_access_tokens/self (e.g. OAuth tokens, or GitLab versions
+// without the endpoint) only produce a warning — the real API calls that
+// follow will surface any genuine permission problem.
+func validateTokenScopes(ctx context.Context, client *gitlab.Client, accepted ...string) error {
+	token, resp, err := client.PersonalAccessTokens.GetSinglePersonalAccessToken(gitlab.WithContext(ctx))
 	if err != nil {
-		return "", fmt.Errorf("failed to parse URL: %w", err)
+		if resp != nil && resp.StatusCode == http.StatusUnauthorized {
+			return fmt.Errorf("token is invalid, revoked or expired: %w", err)
+		}
+		log.Printf("Warning: could not verify token scopes: %s. Continuing anyway.", err)
+		return nil
 	}
+	if !hasAnyScope(token.Scopes, accepted) {
+		return fmt.Errorf("token lacks a required scope (need one of %v), got scopes: %v", accepted, token.Scopes)
+	}
+	return nil
+}
 
-	pathSegments := strings.Split(u.Path, "/")
-
-	mergeRequestsIndex := -1
-	for i, segment := range pathSegments {
-		if segment == "-" && i+1 < len(pathSegments) && pathSegments[i+1] == "merge_requests" {
-			mergeRequestsIndex = i
-			break
+func hasAnyScope(scopes []string, accepted []string) bool {
+	for _, scope := range scopes {
+		for _, want := range accepted {
+			if scope == want {
+				return true
+			}
 		}
 	}
-
-	if mergeRequestsIndex == -1 {
-		return "", fmt.Errorf("invalid URL format: missing '-/merge_requests/'")
-	}
-
-	projectPath := strings.Trim(strings.Join(pathSegments[:mergeRequestsIndex], "/"), "/")
-	if projectPath == "" {
-		return "", fmt.Errorf("invalid URL format: missing project path")
-	}
-	return projectPath, nil
+	return false
 }
 
 func extractProtocolAndDomain(rawURL string) (string, error) {
@@ -151,43 +87,6 @@ func extractProtocolAndDomain(rawURL string) (string, error) {
 	return fmt.Sprintf("%s://%s", parsedURL.Scheme, parsedURL.Host), nil
 }
 
-// validateTokenScopes checks that the supplied token carries the `read_api`
-// (or the broader `api`) scope required to query merge requests. Token types
-// that do not expose GET /personal_access_tokens/self (e.g. OAuth tokens, or
-// GitLab versions without the endpoint) only produce a warning — the real API
-// calls that follow will surface any genuine permission problem.
-func validateTokenScopes(ctx context.Context, client *gitlab.Client) error {
-	token, resp, err := client.PersonalAccessTokens.GetSinglePersonalAccessToken(gitlab.WithContext(ctx))
-	if err != nil {
-		if resp != nil && resp.StatusCode == http.StatusUnauthorized {
-			return fmt.Errorf("token is invalid, revoked or expired: %w", err)
-		}
-		log.Printf("Warning: could not verify token scopes: %s. Continuing anyway.", err)
-		return nil
-	}
-	if !hasRequiredScope(token.Scopes) {
-		return fmt.Errorf("token lacks the required 'read_api' (or 'api') scope, got scopes: %v", token.Scopes)
-	}
-	return nil
-}
-
-func hasRequiredScope(scopes []string) bool {
-	for _, scope := range scopes {
-		if scope == "api" || scope == "read_api" {
-			return true
-		}
-	}
-	return false
-}
-
-func getNumericProjectID(ctx context.Context, client *gitlab.Client, projectPath string) (int64, error) {
-	project, _, err := client.Projects.GetProject(projectPath, nil, gitlab.WithContext(ctx))
-	if err != nil {
-		return 0, fmt.Errorf("failed to fetch project: %w", err)
-	}
-	return project.ID, nil
-}
-
 func getInt64FromEnv(envVar string, defaultValue int64) int64 {
 	valueStr := os.Getenv(envVar)
 	if valueStr == "" {
@@ -196,6 +95,19 @@ func getInt64FromEnv(envVar string, defaultValue int64) int64 {
 	value, err := strconv.ParseInt(valueStr, 10, 64)
 	if err != nil {
 		log.Printf("Could not convert env var '%s' to int: %s", envVar, err)
+		return defaultValue
+	}
+	return value
+}
+
+func getBoolFromEnv(envVar string, defaultValue bool) bool {
+	valueStr := os.Getenv(envVar)
+	if valueStr == "" {
+		return defaultValue
+	}
+	value, err := strconv.ParseBool(valueStr)
+	if err != nil {
+		log.Printf("Could not convert env var '%s' to bool: %s", envVar, err)
 		return defaultValue
 	}
 	return value

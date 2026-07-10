@@ -57,23 +57,29 @@ func TestGetProjectPathFromURL(t *testing.T) {
 	}
 }
 
-func TestHasRequiredScope(t *testing.T) {
+func TestHasAnyScope(t *testing.T) {
+	readOrFull := []string{"api", "read_api"}
+	fullOnly := []string{"api"}
+
 	tests := []struct {
 		name     string
 		scopes   []string
+		accepted []string
 		expected bool
 	}{
-		{name: "read_api scope", scopes: []string{"read_api"}, expected: true},
-		{name: "api scope", scopes: []string{"api"}, expected: true},
-		{name: "both among others", scopes: []string{"read_user", "api", "read_repository"}, expected: true},
-		{name: "insufficient scopes", scopes: []string{"read_user", "read_repository"}, expected: false},
-		{name: "no scopes", scopes: nil, expected: false},
+		{name: "read_api accepted for check", scopes: []string{"read_api"}, accepted: readOrFull, expected: true},
+		{name: "api accepted for check", scopes: []string{"api"}, accepted: readOrFull, expected: true},
+		{name: "among others", scopes: []string{"read_user", "api", "read_repository"}, accepted: readOrFull, expected: true},
+		{name: "insufficient scopes", scopes: []string{"read_user", "read_repository"}, accepted: readOrFull, expected: false},
+		{name: "no scopes", scopes: nil, accepted: readOrFull, expected: false},
+		{name: "read_api not enough for serve", scopes: []string{"read_api"}, accepted: fullOnly, expected: false},
+		{name: "api enough for serve", scopes: []string{"api"}, accepted: fullOnly, expected: true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := hasRequiredScope(tt.scopes); got != tt.expected {
-				t.Errorf("hasRequiredScope(%v) = %v, want %v", tt.scopes, got, tt.expected)
+			if got := hasAnyScope(tt.scopes, tt.accepted); got != tt.expected {
+				t.Errorf("hasAnyScope(%v, %v) = %v, want %v", tt.scopes, tt.accepted, got, tt.expected)
 			}
 		})
 	}
@@ -129,7 +135,7 @@ func TestValidateTokenScopes(t *testing.T) {
 				t.Fatalf("failed to create client: %s", err)
 			}
 
-			err = validateTokenScopes(context.Background(), client)
+			err = validateTokenScopes(context.Background(), client, "api", "read_api")
 			if (err != nil) != tt.wantErr {
 				t.Errorf("validateTokenScopes() error = %v, wantErr %v", err, tt.wantErr)
 			}

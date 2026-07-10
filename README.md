@@ -4,32 +4,45 @@
 
 ## Overview
 
-This CLI tool checks the number of upvotes for a GitLab Merge Request (MR). It is designed to run within an Atlantis workflow and aims to fill the gap in features between GitLab Community Edition and the Enterprise Edition.
+ApproveGuard gates merges on **GitLab Free / Community Edition** by counting merge request
+**approvals** — filling the gap with the Premium "required approvals" feature. It has two modes:
 
-The CLI tool takes three parameters:
+1. **`serve`** — a small webhook server that **blocks the Merge button**: it listens for GitLab
+   merge request webhooks and posts a commit status (`approve-guard`) of `failed`/`success`
+   depending on whether the MR has enough approvals. Combined with the *"Pipelines must succeed"*
+   merge check (available in Free), GitLab itself keeps the Merge button disabled until the
+   threshold is met — and re-enables it the moment the last approval arrives.
+2. **`check`** — the classic one-shot CLI gate for CI workflows (e.g. an
+   [Atlantis](https://www.runatlantis.io/) `apply` step): exits `0` if the MR has enough
+   approvals, `1` otherwise. The legacy *upvotes* (👍) metric is still available via
+   `--mode upvotes`.
 
-1. GitLab Token
-2. Merge Request URL
-3. Upvotes Threshold
+### Why?
 
-It returns an exit code of `0` if the number of upvotes meets or exceeds the specified threshold, and `1` otherwise.
-
-### GitLab Community Edition?
-
-GitLab Community Edition is an open-source platform that provides a wide array of baseline features for version control and project management. However, certain enterprise-level features like multiple approvers are not available in the CE version. This CLI tool aims to supplement that functionality by providing an automated way to check for upvotes on Merge Requests.
+GitLab Free allows any user with the Developer role to approve merge requests, and the
+approvals API (`GET .../approvals`, `approved_by`) is available on all tiers — but Free cannot
+*require* approvals or block the merge. ApproveGuard adds that enforcement externally, using
+only APIs and settings available in the Free tier.
 
 ## 🌟 Features
 
-- Check the upvote count for a specific Merge Request
-- Customize the upvote threshold to suit your project needs
-- Validates that the token has the required `read_api` (or `api`) scope and fails fast otherwise
-- Written in Go for cross-platform compatibility
+- **Merge button blocking** on GitLab Free via commit statuses + "Pipelines must succeed"
+- Counts real **approvals** (who approved is logged by username), not emoji reactions
+- The MR author's self-approval is **excluded by default** (`--count-author-approval` to allow)
+- **Approvals reset on new commits** (like the Premium setting; on by default in `serve`,
+  requires a project/group access token, i.e. a bot user; disable with
+  `--reset-approvals-on-push=false`)
+- Per-project threshold override right in the webhook URL: `/webhook?approvals=3`
+- Legacy upvotes mode for backwards compatibility (`check --mode upvotes`)
+- Single static binary, distroless container image
 
 ## Requirements
 
-- Go 1.24+
-- Atlantis
-- GitLab API Token with `read_api` access level
+- Go 1.24+ (build)
+- GitLab token:
+  - `check`: `read_api` scope is enough
+  - `serve`: **`api` scope** (posts commit statuses); to also reset approvals on push it must
+    be a **project or group access token** (bot user) with the Developer+ role
 
 ## 🚀 Installation
 
@@ -45,55 +58,65 @@ To run the tests:
 go test ./...
 ```
 
-## ⚙ Options
+## ▶️ Webhook server (`serve`)
 
-- `--token`: GitLab API token (can also be set via `GITLAB_TOKEN` environment variable)
-- `--upvotes`: The minimum required upvotes (can also be set via `UPVOTES` environment variable)
-- `--url`: The Merge Request URL (can also be set via `PULL_URL` environment variable)
-- `--pull-num`: The Merge Request ID (can also be set via `PULL_NUM` environment variable)
+```bash
+$ export GITLAB_TOKEN=glpat-XXX            # api scope
+$ export GITLAB_WEBHOOK_SECRET=change-me
+$ export APPROVALS=2                        # default threshold
+$ ./ApproveGuard serve
+2026/07/10 12:00:00 ApproveGuard v1.0.0 listening on :8080 (default threshold: 2 approvals)
+```
 
-## ▶️ Running
+| Flag | Env var | Default | Description |
+|---|---|---|---|
+| `--listen` | `LISTEN_ADDR` | `:8080` | Address to listen on |
+| `--webhook-secret` | `GITLAB_WEBHOOK_SECRET` | — (required) | Webhook secret token |
+| `--token` | `GITLAB_TOKEN` | — (required) | GitLab token, `api` scope |
+| `--gitlab-url` | `GITLAB_URL` | derived from payload | GitLab base URL |
+| `--approvals` | `APPROVALS` | `1` | Default approvals threshold |
+| `--count-author-approval` | `COUNT_AUTHOR_APPROVAL` | `false` | Count the author's own approval |
+| `--reset-approvals-on-push` | `RESET_APPROVALS_ON_PUSH` | `true` | Reset approvals on new commits |
+
+Endpoints: `POST /webhook` (GitLab webhook receiver, optional `?approvals=N` per-project
+threshold override), `GET /healthz`.
+
+### GitLab project setup (once per project)
+
+1. Create a **project access token** (Settings → Access tokens) with role *Developer* and scope
+   `api` — this creates a bot user; use the token as `GITLAB_TOKEN`.
+2. Enable **Settings → Merge requests → Merge checks → "Pipelines must succeed"**.
+3. Add a webhook (Settings → Webhooks): URL `https://approveguard.example.com/webhook`
+   (append `?approvals=3` to override the threshold for this project), your secret token, and
+   trigger **Merge request events**.
+
+That's it: every MR now shows an `approve-guard` status in the pipeline widget
+(`1/2 approvals`), and the Merge button stays disabled until the status turns green.
+
+## ▶️ One-shot gate (`check`)
 
 ```bash
 $ export GITLAB_TOKEN=glpat-XXX
 $ export PULL_NUM=1
-$ export PULL_URL=https://gitlab.example.com/denys.lemeshko/downstream/-/merge_requests/1
-$ ./ApproveGuard -h
-Check upvotes for a GitLab MR
-
-Usage:
-  ApproveGuard [flags]
-
-Flags:
-  -h, --help           help for ApproveGuard
-      --pull-num int   Merge request ID (or set PULL_NUM env var)
-      --token string   GitLab token (or set GITLAB_TOKEN env var)
-      --upvotes int    Upvote threshold (or set UPVOTES env var) (default 1)
-      --url string     Merge request URL (or set PULL_URL env var)
-  -v, --version        version for ApproveGuard
-```
-
-👍
-
-```bash
-$ ./ApproveGuard
-2023/09/02 04:29:47 Numeric Project ID: 91
-2023/09/02 04:29:47 Merge request Author: Denys Lemeshko (denys.lemeshko)
-2023/09/02 04:29:47 Merge request has sufficient upvotes.
+$ export PULL_URL=https://gitlab.example.com/devops/terraform/project/-/merge_requests/1
+$ ./ApproveGuard check --approvals 2
+2026/07/10 12:00:00 Numeric Project ID: 91
+2026/07/10 12:00:00 Merge request Author: Denys Lemeshko (denys.lemeshko)
+2026/07/10 12:00:00 Approved by: alice, bob
+2026/07/10 12:00:00 Merge request has sufficient approvals (2/2 approvals).
 $ echo $?
 0
 ```
 
-👎
-
-```bash
-$ ./ApproveGuard
-2023/09/02 04:30:07 Numeric Project ID: 91
-2023/09/02 04:30:08 Merge request Author: Denys Lemeshko (denys.lemeshko)
-2023/09/02 04:30:08 Merge request has insufficient upvotes.
-$ echo $?
-1
-```
+| Flag | Env var | Default | Description |
+|---|---|---|---|
+| `--token` | `GITLAB_TOKEN` | — (required) | GitLab token, `read_api` is enough |
+| `--url` | `PULL_URL` | — (required) | Merge request URL |
+| `--pull-num` | `PULL_NUM` | — (required) | Merge request IID |
+| `--mode` | `CHECK_MODE` | `approvals` | `approvals` or `upvotes` (legacy) |
+| `--approvals` | `APPROVALS` | `1` | Threshold |
+| `--upvotes` | `UPVOTES` | — | Legacy threshold alias (used when `--approvals` unset) |
+| `--count-author-approval` | `COUNT_AUTHOR_APPROVAL` | `false` | Count the author's own approval |
 
 ![Atlantis](./atlantis.png)
 
@@ -115,11 +138,6 @@ services:
     container_name: atlantis
     image: registry.example.com/docker/atlantis:v0.0.2-d97e6784
     restart: unless-stopped
-    logging:
-        driver: "json-file"
-        options:
-            max-file: 5
-            max-size: 10m
     expose:
       - "4141"
     command:
@@ -135,22 +153,38 @@ services:
     networks:
       - traefik-public
     environment:
-      - "UPVOTES=2"
+      - "APPROVALS=2"
       - "ATLANTIS_GITLAB_HOSTNAME=gitlab.example.com"
       - "ATLANTIS_GITLAB_TOKEN=glpat-XXX"
     labels:
-      # Explicitly tell Traefik to expose this container
       - "traefik.enable=true"
-      # HTTPS Atlantis
       - "traefik.http.routers.atlantis-web-secure.rule=Host(`atlantis.example.com`)"
       - "traefik.http.routers.atlantis-web-secure.tls=true"
       - "traefik.http.routers.atlantis-web-secure.tls.certresolver=myresolver"
       - "traefik.http.routers.atlantis-web-secure.entrypoints=websecure"
-      - "traefik.http.routers.atlantis-web-secure.middlewares=robots-tag-header@file,atlantis-auth"
       - "traefik.http.routers.atlantis-web-secure.service=atlantis-web-secure"
       - "traefik.http.services.atlantis-web-secure.loadbalancer.server.port=4141"
-      - "traefik.http.services.atlantis-web-secure.loadbalancer.server.scheme=http"
-      - "traefik.http.middlewares.atlantis-auth.basicauth.users=lde:XXX"
+
+  approveguard:
+    container_name: approveguard
+    image: ghcr.io/wwwlde/approveguard:v1.0.0
+    restart: unless-stopped
+    command: ['serve']
+    expose:
+      - "8080"
+    networks:
+      - traefik-public
+    environment:
+      - "GITLAB_TOKEN=glpat-XXX"                # project/group access token, api scope
+      - "GITLAB_WEBHOOK_SECRET=change-me"
+      - "APPROVALS=2"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.approveguard.rule=Host(`approveguard.example.com`)"
+      - "traefik.http.routers.approveguard.tls=true"
+      - "traefik.http.routers.approveguard.tls.certresolver=myresolver"
+      - "traefik.http.routers.approveguard.entrypoints=websecure"
+      - "traefik.http.services.approveguard.loadbalancer.server.port=8080"
 ```
 
 `repos.yaml`
@@ -173,12 +207,19 @@ workflows:
       - run: bash -o pipefail -c "terragrunt plan -no-color -out=${PLANFILE}"
     apply:
       steps:
-      - run: ApproveGuard --token $ATLANTIS_GITLAB_TOKEN --pull-num $PULL_NUM --upvotes 2 --url https://${ATLANTIS_GITLAB_HOSTNAME}/${BASE_REPO_OWNER}/${BASE_REPO_NAME}/-/merge_requests/${PULL_NUM}
+      - run: ApproveGuard check --token $ATLANTIS_GITLAB_TOKEN --pull-num $PULL_NUM --approvals 2 --url https://${ATLANTIS_GITLAB_HOSTNAME}/${BASE_REPO_OWNER}/${BASE_REPO_NAME}/-/merge_requests/${PULL_NUM}
       - env:
           name: TERRAGRUNT_TFPATH
           command: 'echo terraform$ATLANTIS_TERRAFORM_VERSION'
       - run: bash -o pipefail -c "terragrunt apply -no-color ${PLANFILE}"
 ```
+
+## Upgrading from v0.x
+
+- The root command became the `check` subcommand: `ApproveGuard --upvotes 2 ...` →
+  `ApproveGuard check --upvotes 2 --mode upvotes ...` (or drop `--mode` to switch to approvals).
+- `check` counts **approvals** by default; pass `--mode upvotes` to keep the old behaviour.
+- The MR author's own approval is not counted unless `--count-author-approval` is set.
 
 ## 🤝 Contributing
 
